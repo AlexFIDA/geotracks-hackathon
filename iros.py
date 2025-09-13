@@ -3,7 +3,7 @@ import folium
 from folium.plugins import HeatMap
 import random
 
-file = r"C:\Users\iros0\PycharmProjects\KoncusProjectInDrave\geo_locations_astana_hackathon"
+file = r"C:\Users\Рамазан\Desktop\geo_locations_astana_hackathon"
 
 if __name__ == '__main__':
 
