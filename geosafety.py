@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 import folium
+from folium.plugins import AntPath
 
 # ----------------------------- CLI ---------------------------------
 def parse_args():
@@ -44,16 +45,34 @@ def ang_diff_deg_arr(a, b):
 def ensure_outdir(path):
     os.makedirs(path, exist_ok=True)
 
-def color_for(reason: str):
-    if "gps_jump" in reason: return "black"
-    if "speed_spike" in reason: return "purple"
-    if "high_lateral_acc" in reason: return "red"
-    if "sharp_turn" in reason: return "orange"
-    if "sparse_area" in reason: return "blue"
-    return "gray"
+# Человеко-понятные названия причин + цвета
+REASON_MAP = {
+    "gps_jump":         ("Срыв GPS (скачок координаты)", "black"),
+    "speed_spike":      ("Скачок скорости",               "purple"),
+    "high_lateral_acc": ("Высокое боковое ускорение",     "red"),
+    "sharp_turn":       ("Резкий поворот",                "orange"),
+    "sparse_area":      ("Редкая зона (мало точек рядом)","blue"),
+}
+
+def color_for(reason: str) -> str:
+    code = str(reason).split("|")[0] if reason else ""
+    return REASON_MAP.get(code, ("", "gray"))[1]
+
+def pretty_reasons(reason: str) -> str:
+    if not reason:
+        return "нет"
+    labels = []
+    for code in str(reason).split("|"):
+        labels.append(REASON_MAP.get(code, (code, "gray"))[0])
+    return ", ".join(labels)
+
+def track_label(val) -> str:
+    try:
+        return f"Трек №{int(val)}"
+    except Exception:
+        return "Трек (без номера)"
 
 def speed_color(v_kmh: float):
-    # простая градация для слоя "Скорость по точкам"
     if np.isnan(v_kmh): return "gray"
     if v_kmh < 20: return "green"
     if v_kmh < 40: return "blue"
@@ -86,7 +105,6 @@ def main():
     bbox = (df["lat"].between(lat_min, lat_max)) & (df["lon"].between(lon_min, lon_max))
     df = df[bbox].copy().reset_index(drop=True)
 
-    # Проверка после bbox
     if df.empty:
         print("[error] после bbox нет точек. Проверьте --city/--bbox и входной CSV.")
         return
@@ -99,7 +117,7 @@ def main():
     df["speed_ms"] = df["spd"].astype(np.float32)
     df["speed_kmh"] = df["speed_ms"] * 3.6
 
-    # Сортировка по id (если временной колонки нет)
+    # Сортировка по id (без времени)
     df = df.sort_values(["id"]).reset_index(drop=True)
 
     # Сдвиги
@@ -148,7 +166,7 @@ def main():
             metric="haversine",
             leaf_size=args.leaf_size
         ).fit(coords)
-        dists, _ = nbrs.kneighbors(coords, n_neighbors=max(2, args.neighbors))  # без n_jobs
+        dists, _ = nbrs.kneighbors(coords, n_neighbors=max(2, args.neighbors))
         rK_m = dists[:, -1] * EARTH_R
         df["rK_m"] = rK_m.astype(np.float32)
         thr_sparse = np.nanpercentile(df["rK_m"], 98)
@@ -184,6 +202,7 @@ def main():
     point_cols = ["id", "lat", "lon", "speed_kmh", "d_azm_deg", "a_lat", "step_m", "anomaly_reason", "is_anomaly"]
     if "rK_m" in df.columns: point_cols.append("rK_m")
     if "cell_count" in df.columns: point_cols.append("cell_count")
+    ensure_outdir(args.outdir)
     df.to_csv(os.path.join(args.outdir, "all_points_with_flags.csv"), index=False)
     df[df["is_anomaly"]][point_cols].to_csv(os.path.join(args.outdir, "point_anomalies.csv"), index=False)
     trip_stats.to_csv(os.path.join(args.outdir, "top_suspicious_trips.csv"), index=False)
@@ -203,30 +222,58 @@ def main():
         sample_n = min(2000, len(df_anom))
         for _, r in df_anom.sample(sample_n, random_state=0).iterrows():
             folium.CircleMarker(
-                location=[float(r.lat), float(r.lon)],
+                location=[float(r["lat"]), float(r["lon"])],
                 radius=5,
-                color=color_for(str(r.anomaly_reason)),
+                color=color_for(str(r["anomaly_reason"])),
                 fill=True, fill_opacity=0.8,
-                popup=f"id={int(r.id) if pd.notna(r.id) else 'NA'} | {r.anomaly_reason}"
+                popup=f"{track_label(r['id'])} | Причина: {pretty_reasons(r['anomaly_reason'])}"
             ).add_to(fg_anom)
     fg_anom.add_to(m)
 
-    # Слой: Маршруты подозрительных id
+    # Слой: Маршруты подозрительных треков — ЛИНИЯ от старта до финиша
     bad_ids = set(trip_stats[trip_stats["is_bad_trip"]]["id"].head(5))
-    fg_bad = folium.FeatureGroup(name="Необычные маршруты", show=True)
+
+    # старт/финиш по каждому треку (без явного времени берем first/last)
+    grp = df.groupby("id", sort=False)
+    starts = grp[["lat", "lon"]].first().rename(columns={"lat": "start_lat", "lon": "start_lon"})
+    ends   = grp[["lat", "lon"]].last().rename(columns={"lat": "end_lat",  "lon": "end_lon"})
+    se = starts.join(ends).reset_index()
+
+    fg_bad = folium.FeatureGroup(name="Необычные маршруты (A→B)", show=True)
     for tid in bad_ids:
-        seg = df[df["id"] == tid][["lat", "lon", "is_anomaly", "anomaly_reason"]].reset_index(drop=True)
-        if len(seg) == 0:
+        row = se[se["id"] == tid]
+        if row.empty:
             continue
-        folium.PolyLine(seg[["lat", "lon"]].astype(float).values.tolist(), weight=3).add_to(fg_bad)
-        for _, r in seg[seg["is_anomaly"]].iterrows():
-            folium.CircleMarker(
-                location=[float(r.lat), float(r.lon)],
-                radius=5,
-                color=color_for(str(r.anomaly_reason)),
-                fill=True, fill_opacity=0.9
-            ).add_to(fg_bad)
+        s_lat, s_lon = float(row["start_lat"].iloc[0]), float(row["start_lon"].iloc[0])
+        e_lat, e_lon = float(row["end_lat"].iloc[0]),   float(row["end_lon"].iloc[0])
+
+        # Прямая от A к B
+        folium.PolyLine([[s_lat, s_lon], [e_lat, e_lon]],
+                        weight=4, opacity=0.8, tooltip=track_label(tid)).add_to(fg_bad)
+
+        # Точка A (старт)
+        folium.CircleMarker([s_lat, s_lon], radius=6, color="black", fill=True, fill_opacity=1.0,
+                            popup=f"{track_label(tid)} — Старт (A)").add_to(fg_bad)
+        # Точка B (финиш)
+        folium.CircleMarker([e_lat, e_lon], radius=6, color="darkblue", fill=True, fill_opacity=1.0,
+                            popup=f"{track_label(tid)} — Финиш (B)").add_to(fg_bad)
+    AntPath([[s_lat, s_lon], [e_lat, e_lon]], delay=800, weight=4, dash_array=[10, 20]).add_to(fg_bad)
     fg_bad.add_to(m)
+    
+
+    # Легенда
+    legend = """
+    <div style="position: fixed; bottom: 20px; left: 20px; z-index: 9999;
+    background: white; padding: 10px 12px; border: 1px solid #999; font-size: 12px;">
+    <b>Аномалии</b><br>
+    <span style="color:black;">■</span> Срыв GPS<br>
+    <span style="color:purple;">■</span> Скачок скорости<br>
+    <span style="color:red;">■</span> Высокое боковое ускорение<br>
+    <span style="color:orange;">■</span> Резкий поворот<br>
+    <span style="color:blue;">■</span> Редкая зона
+    </div>
+    """
+    m.get_root().html.add_child(folium.Element(legend))
 
     folium.LayerControl(collapsed=False).add_to(m)
     out_html = os.path.join(args.outdir, "combined_map.html")
@@ -236,7 +283,8 @@ def main():
     # 11) Короткий отчет
     total = len(df)
     anomalies = int(df["is_anomaly"].sum())
-    print(f"[done] points={total}, anomalies={anomalies} ({anomalies/max(total,1):.1%}), "
+    share = anomalies / total if total else 0.0
+    print(f"[done] points={total}, anomalies={anomalies} ({share:.1%}), "
           f"bad_trips={(trip_stats['is_bad_trip']).sum()}")
     print(f"[out] saved to: {os.path.abspath(args.outdir)}; time: {time.time()-t0:.1f}s")
 
