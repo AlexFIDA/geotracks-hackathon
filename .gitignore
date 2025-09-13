@@ -1,17 +1,8 @@
-data/*
-!data/sample.csv
-
-__pycache__/
+outputs/
 *.pyc
-*.pyo
-*.pyd
-
+__pycache__/
+.venv/
 .ipynb_checkpoints/
 
-.vscode/
-.idea/
-
-.DS_Store
-Thumbs.db
-
-*.log
+Data/*
+!Data/.gitkeep
