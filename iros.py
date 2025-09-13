@@ -3,7 +3,7 @@ import folium
 from folium.plugins import HeatMap
 import random
 
-file = r"C:\Users\iros0\PycharmProjects\KoncusProjectInDrave\geo_locations_astana_hackathon"
+file = r"Data/geo_locations_astana_hackathon"
 
 if __name__ == '__main__':
 
@@ -108,3 +108,4 @@ if __name__ == '__main__':
     # --- Сохраняем
     m.save("itog.html")
     print("✅ Карта сохранена в itog.html")
+
