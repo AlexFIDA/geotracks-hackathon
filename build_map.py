@@ -19,6 +19,7 @@ CFG = {
     "geo_use_grid": 1,         # 1 = быстро, без kNN
     "geo_neighbors": 10, "geo_leaf_size": 40,
     "geo_anom_points": 2000, "geo_bad_trips": 5,
+    "outdir": str(OUT),
 }
 
 def _add(mod, m, df, cfg):
