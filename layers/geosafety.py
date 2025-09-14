@@ -136,7 +136,7 @@ def add_layers(m: folium.Map, df: pd.DataFrame, cfg: dict):
     trip_stats["is_bad_trip"] = trip_stats["anomaly_share"] >= 0.15
 
     # 1) Точки-аномалии
-    fg_anom = folium.FeatureGroup(name="Geosafety - Резкие отклонения", show=True)
+    fg_anom = folium.FeatureGroup(name="Geosafety - Резкие отклонения", show=False)
     df_anom = x[x["is_anomaly"]]
     if not df_anom.empty:
         n = min(int(cfg.get("geo_anom_points", 2000)), len(df_anom))
@@ -150,7 +150,7 @@ def add_layers(m: folium.Map, df: pd.DataFrame, cfg: dict):
     fg_anom.add_to(m)
 
     # 2) Необычные маршруты: прямая A→B + маркеры A/B
-    fg_ab = folium.FeatureGroup(name="Geosafety - Необычные маршруты (A→B)", show=True)
+    fg_ab = folium.FeatureGroup(name="Geosafety - Необычные маршруты (A→B)", show=False)
     grp = x.groupby("id", sort=False)
     se = grp[["lat", "lon"]].first().rename(columns={"lat": "start_lat", "lon": "start_lon"}).join(
          grp[["lat", "lon"]].last().rename(columns={"lat": "end_lat", "lon": "end_lon"})
