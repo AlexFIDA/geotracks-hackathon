@@ -2,3 +2,5 @@ pandas
 numpy
 folium
 matplotlib
+scikit-learn
+branca
