@@ -7,7 +7,8 @@
 1) git clone https://github.com/AlexFIDA/geotracks-hackathon.git
 2) cd geotracks-hackathon 
 3) pip install -r requirements.txt 
-4) python build_map.py 
+4) Скачать файл датасет и переместить файл в папку "Data": https://drive.google.com/file/d/1hjgmsBIdq9cHAvKkESo962rt2RU1xjWb/view?usp=sharing
+5) python build_map.py 
 
 Запуск крайне прост. В этой последовательности вы клонируете репозиторий, устанавливаете все нужные библиотеки и запускаете конфигурационный файл
 
