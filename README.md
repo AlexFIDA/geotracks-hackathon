@@ -4,7 +4,7 @@
 
 Выполните в консоли (терминале) следующие команды:
 
-1) git clone https://github.com/geotracks-hackathon
+1) git clone https://github.com/AlexFIDA/geotracks-hackathon.git
 2) cd geotracks-hackathon 
 3) pip install -r requirements.txt 
 4) python build_map.py 
