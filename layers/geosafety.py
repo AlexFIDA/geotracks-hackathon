@@ -86,7 +86,7 @@ def main():
     bbox = (df["lat"].between(lat_min, lat_max)) & (df["lon"].between(lon_min, lon_max))
     df = df[bbox].copy().reset_index(drop=True)
 
-    # Проверка после bbox
+
     if df.empty:
         print("[error] после bbox нет точек. Проверьте --city/--bbox и входной CSV.")
         return
